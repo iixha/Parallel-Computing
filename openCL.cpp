@@ -1,56 +1,41 @@
 #include <stdio.h>
-#include <cstdlib>
-#include <time.h>
+#include <stdlib.h>
 #include <iostream>
 #include <CL/cl.h>
 #include "matrix.h"
 
-using namespace std;
+#define SIZE 512 // Adjust this based on your matrix size
+#define TILE_SIZE 16
 
 void FillMatricesRandomly(Matrix<double> &A, Matrix<double> &B);
 void PrintMatrices(Matrix<double> &A, Matrix<double> &B, Matrix<double> &C);
 
-int randomHigh = 100;
-int randomLow = 0;
-
-int main(int argc, char *argv[]) {
-    cout << "Starting a parallel matrix multiplication using OpenCL." << endl;
-
-    if (argv[1] == NULL) {
-        cout << "ERROR: The program must be executed in the following way  \n\n  \t \"./a N \"  \n\n where N is an integer. \n \n " << endl;
-        return 1;
-    }
-
-    int N = atoi(argv[1]);
-    cout << "The matrices are: " << N << "x" << N << endl;
-
-    int numberOfRowsA = N;
-    int numberOfColsA = N;
-    int numberOfRowsB = N;
-    int numberOfColsB = N;
-
-    Matrix<double> A = Matrix<double>(numberOfRowsA, numberOfColsA);
-    Matrix<double> B = Matrix<double>(numberOfRowsB, numberOfColsB);
-    Matrix<double> C = Matrix<double>(numberOfRowsA, numberOfColsB);
+int main() {
+    // Create matrices and fill them randomly
+    Matrix<double> A(SIZE, SIZE);
+    Matrix<double> B(SIZE, SIZE);
+    Matrix<double> C(SIZE, SIZE);
 
     FillMatricesRandomly(A, B);
 
-    cl_uint ret_num_platforms;
-    clGetPlatformIDs(0, NULL, &ret_num_platforms);
-    if (ret_num_platforms == 0) {
-        cout << "No OpenCL platforms found." << endl;
-        return 1;
+    // Load OpenCL source code from a file
+    FILE *fp;
+    char *source_str;
+    size_t source_size;
+
+    fp = fopen("matrix_mul.cl", "r");
+    if (!fp) {
+        fprintf(stderr, "Failed to load kernel.\n");
+        exit(1);
     }
 
+    source_str = (char *)malloc(SIZE);
+    source_size = fread(source_str, 1, SIZE, fp);
+    fclose(fp);
+
+    // OpenCL initialization
     cl_platform_id platform;
     clGetPlatformIDs(1, &platform, NULL);
-
-    cl_uint ret_num_devices;
-    clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, NULL, &ret_num_devices);
-    if (ret_num_devices == 0) {
-        cout << "No OpenCL GPU devices found." << endl;
-        return 1;
-    }
 
     cl_device_id device;
     clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
@@ -58,78 +43,60 @@ int main(int argc, char *argv[]) {
     cl_context context = clCreateContext(NULL, 1, &device, NULL, NULL, NULL);
     cl_command_queue command_queue = clCreateCommandQueue(context, device, 0, NULL);
 
-    size_t size = N;
-    Matrix<double> A_host = A;
-    Matrix<double> B_host = B;
-    Matrix<double> C_host(size, size);
+    cl_mem a_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY, SIZE * SIZE * sizeof(double), NULL, NULL);
+    cl_mem b_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY, SIZE * SIZE * sizeof(double), NULL, NULL);
+    cl_mem c_mem_obj = clCreateBuffer(context, CL_MEM_WRITE_ONLY, SIZE * SIZE * sizeof(double), NULL, NULL);
 
-    cl_mem buffer_A = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, size * size * sizeof(double), A_host.data(), NULL);
-    cl_mem buffer_B = clCreateBuffer(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, size * size * sizeof(double), B_host.data(), NULL);
-    cl_mem buffer_C = clCreateBuffer(context, CL_MEM_WRITE_ONLY, size * size * sizeof(double), NULL, NULL);
+    clEnqueueWriteBuffer(command_queue, a_mem_obj, CL_TRUE, 0, SIZE * SIZE * sizeof(double), A.data(), 0, NULL, NULL);
+    clEnqueueWriteBuffer(command_queue, b_mem_obj, CL_TRUE, 0, SIZE * SIZE * sizeof(double), B.data(), 0, NULL, NULL);
 
-    const char* kernel_source =
-        "__kernel void matrix_mul(__global double* A, __global double* B, __global double* C, int N) {\n"
-        "    int i = get_global_id(0);\n"
-        "    int j = get_global_id(1);\n"
-        "    double sum = 0;\n"
-        "    for (int k = 0; k < N; k++) {\n"
-        "        sum += A[i * N + k] * B[k * N + j];\n"
-        "    }\n"
-        "    C[i * N + j] = sum;\n"
-        "}\n";
-
-    cl_program program = clCreateProgramWithSource(context, 1, &kernel_source, NULL, NULL);
+    // Compile OpenCL program
+    cl_program program = clCreateProgramWithSource(context, 1, (const char **)&source_str, (const size_t *)&source_size, NULL);
     clBuildProgram(program, 1, &device, NULL, NULL, NULL);
 
+    // Create OpenCL kernels
     cl_kernel kernel = clCreateKernel(program, "matrix_mul", NULL);
+    clSetKernelArg(kernel, 0, sizeof(cl_mem), (void *)&a_mem_obj);
+    clSetKernelArg(kernel, 1, sizeof(cl_mem), (void *)&b_mem_obj);
+    clSetKernelArg(kernel, 2, sizeof(cl_mem), (void *)&c_mem_obj);
 
-    clSetKernelArg(kernel, 0, sizeof(cl_mem), &buffer_A);
-    clSetKernelArg(kernel, 1, sizeof(cl_mem), &buffer_B);
-    clSetKernelArg(kernel, 2, sizeof(cl_mem), &buffer_C);
-    clSetKernelArg(kernel, 3, sizeof(int), &size);
+    // Set global and local work size
+    size_t local_item_size[2] = { TILE_SIZE, TILE_SIZE };
+    size_t global_item_size[2] = { SIZE, SIZE };
 
-    size_t global_work_size[2] = { size, size };
-    size_t local_work_size[2] = { 1, 1 };
-
-    clock_t start = clock();
-    clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_work_size, local_work_size, 0, NULL, NULL);
+    // Execute OpenCL kernel
+    clEnqueueNDRangeKernel(command_queue, kernel, 2, NULL, global_item_size, local_item_size, 0, NULL, NULL);
     clFinish(command_queue);
-    clock_t end = clock();
-    double matrixCalculationTime = (double)(end - start) / CLOCKS_PER_SEC;
 
-    clEnqueueReadBuffer(command_queue, buffer_C, CL_TRUE, 0, size * size * sizeof(double), C_host.data(), 0, NULL, NULL);
+    // Read the result back from the GPU
+    clEnqueueReadBuffer(command_queue, c_mem_obj, CL_TRUE, 0, SIZE * SIZE * sizeof(double), C.data(), 0, NULL, NULL);
 
-    cout << "\nTotal multiplication time = " << matrixCalculationTime << " seconds" << endl;
-
-    PrintMatrices(A, B, C_host);
-
-    clReleaseMemObject(buffer_A);
-    clReleaseMemObject(buffer_B);
-    clReleaseMemObject(buffer_C);
-    clReleaseKernel(kernel);
+    // Cleanup OpenCL resources
+    clReleaseMemObject(a_mem_obj);
+    clReleaseMemObject(b_mem_obj);
+    clReleaseMemObject(c_mem_obj);
     clReleaseProgram(program);
+    clReleaseKernel(kernel);
     clReleaseCommandQueue(command_queue);
     clReleaseContext(context);
+
+    // Print matrices and cleanup
+    PrintMatrices(A, B, C);
+    free(source_str);
 
     return 0;
 }
 
 void FillMatricesRandomly(Matrix<double> &A, Matrix<double> &B) {
     srand(time(NULL));
-
     for (int i = 0; i < A.rows(); i++) {
         for (int j = 0; j < A.cols(); j++) {
-            A(i, j) = rand() % (randomHigh - randomLow) + randomLow;
-        }
-    }
-
-    for (int i = 0; i < B.rows(); i++) {
-        for (int j = 0; j < B.cols(); j++) {
-            B(i, j) = rand() % (randomHigh - randomLow) + randomLow;
+            A(i, j) = static_cast<double>(rand() % 100) / 10.0; // Random values between 0 and 9.9
+            B(i, j) = static_cast<double>(rand() % 100) / 10.0;
         }
     }
 }
 
 void PrintMatrices(Matrix<double> &A, Matrix<double> &B, Matrix<double> &C) {
-    // Same as your original function
+    // Implement this function to print matrices if needed
 }
