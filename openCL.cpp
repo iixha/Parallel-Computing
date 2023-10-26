@@ -97,30 +97,26 @@ void FillMatricesRandomly(Matrix<double> &A, Matrix<double> &B) {
     }
 }
 
-void PrintMatrices(Matrix<double> &A, Matrix<double> &B, Matrix<double> &C) {
-    cout << "\n\nMatrix A" << endl;
-  for (int i = 0; i < A.rows(); i++) {
-    cout << endl << endl;
-    for (int j = 0; j < A.cols(); j++)
-      cout << A(i,j) << " ";
-  }
-  
-  cout << "\n\n\n\nMatrix B" << endl;  
-  
-  for (int i = 0; i < B.rows(); i++) {
-    cout << "\n" << endl;
-    for (int j = 0; j < B.cols(); j++)
-      cout << B(i,j) << " ";
-  }
-  
-  cout << "\n\n\n\nMultiplied Matrix C" << endl;  
-  
-  for (int i = 0; i < C.rows(); i++) {
-    cout << "\n" << endl;  
-    for (int j = 0; j < C.cols(); j++)
-      cout << C(i,j) << " ";
-  }
-  
-  cout << endl << endl << endl;  
+void PrintMatrices(Matrix <double> &A, Matrix <double> &B, Matrix <double> &C) {
+    cout << "\nMatrix A:" << endl;
+    for (int i = 0; i < A.rows(); i++) {
+        for (int j = 0; j < A.cols(); j++)
+            cout << A(i, j) << " ";
+        cout << endl;
+    }
+
+    cout << "\nMatrix B:" << endl;
+    for (int i = 0; i < B.rows(); i++) {
+        for (int j = 0; j < B.cols(); j++)
+            cout << B(i, j) << " ";
+        cout << endl;
+    }
+
+    cout << "\nMultiplied Matrix C:" << endl;
+    for (int i = 0; i < C.rows(); i++) {
+        for (int j = 0; j < C.cols(); j++)
+            cout << C(i, j) << " ";
+        cout << endl;
+    }
 }
 }
