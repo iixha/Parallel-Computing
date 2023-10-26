@@ -41,7 +41,7 @@ int main() {
     clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
 
     cl_context context = clCreateContext(NULL, 1, &device, NULL, NULL, NULL);
-    cl_command_queue command_queue = clCreateCommandQueue(context, device, 0, NULL);
+    cl_command_queue command_queue = clCreateCommandQueueWithProperties(context, device, NULL, NULL);
 
     cl_mem a_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY, SIZE * SIZE * sizeof(double), NULL, NULL);
     cl_mem b_mem_obj = clCreateBuffer(context, CL_MEM_READ_ONLY, SIZE * SIZE * sizeof(double), NULL, NULL);
@@ -98,5 +98,29 @@ void FillMatricesRandomly(Matrix<double> &A, Matrix<double> &B) {
 }
 
 void PrintMatrices(Matrix<double> &A, Matrix<double> &B, Matrix<double> &C) {
-    // Implement this function to print matrices if needed
+    cout << "\n\nMatrix A" << endl;
+  for (int i = 0; i < A.rows(); i++) {
+    cout << endl << endl;
+    for (int j = 0; j < A.cols(); j++)
+      cout << A(i,j) << " ";
+  }
+  
+  cout << "\n\n\n\nMatrix B" << endl;  
+  
+  for (int i = 0; i < B.rows(); i++) {
+    cout << "\n" << endl;
+    for (int j = 0; j < B.cols(); j++)
+      cout << B(i,j) << " ";
+  }
+  
+  cout << "\n\n\n\nMultiplied Matrix C" << endl;  
+  
+  for (int i = 0; i < C.rows(); i++) {
+    cout << "\n" << endl;  
+    for (int j = 0; j < C.cols(); j++)
+      cout << C(i,j) << " ";
+  }
+  
+  cout << endl << endl << endl;  
+}
 }
